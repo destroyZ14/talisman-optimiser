@@ -5,12 +5,8 @@ from skypy import SkyblockError
 import traceback
 from itertools import product
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 notnotmelon = 270352691924959243
-api_key = os.getenv('API_KEY')
+api_key = os.environ['API_KEY']
 
 damaging_potions = [
     {'name': 'critical', 'stats': {'crit chance': [0, 10, 15, 20, 25], 'crit damage': [0, 10, 20, 30, 40]}},
@@ -426,4 +422,4 @@ class Bot(discord.Client):
 
 client = Bot()
 print('Attempting to connect to discord...')
-client.run(os.getenv('DISCORD_TOKEN'))
+client.run(os.environ['DISCORD_TOKEN'])

@@ -1,4 +1,3 @@
-python-dotenv
 requests
 discord.py
 dnspython==1.16.0
