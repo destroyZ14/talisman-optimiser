@@ -1,2 +1,0 @@
-def delete(window):
-	pass
