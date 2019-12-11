@@ -1,12 +1,3 @@
-#######################################
-#                                     #
-#             SkyPy v1.0              #
-#                                     #
-#   by: Jordan Baron Copyright 2019   #
-#   extended by: Zachary Picco 2019   #
-#                                     #
-#######################################
-
 from skypy_constants import *
 import re
 
@@ -26,7 +17,6 @@ from struct import unpack
 
 class SkyblockError(Exception):
     """A general exception from the skyblock library"""
-
 
 class NeverPlayedSkyblockError(SkyblockError):
     """This user has never played skyblock before!"""
@@ -173,8 +163,8 @@ class Item:
         return results
 
 
-def damage(weapon_dmg, strength, crit_dmg, ench_damage):
-    return (5 + weapon_dmg + strength // 5) * (1 + strength / 100) * (1 + crit_dmg / 100) * (1 + ench_damage / 100)
+def damage(weapon_dmg, strength, crit_dmg, ench_modifier):
+    return (5 + weapon_dmg + strength // 5) * (1 + strength / 100) * (1 + crit_dmg / 100) * ench_modifier
 
 
 def get_uuid(uname):

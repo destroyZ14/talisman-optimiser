@@ -90,7 +90,8 @@ activities = {
         'sharpness',
         'power',
         'spiked_hook',
-        'first_strike'
+        'first_strike',
+        'impaling'
     ],
     'Players': [
         'giant_killer',
@@ -140,9 +141,11 @@ reforges_list = list(relavant_reforges.values())
 
 class Route:
     def __init__(self, talismans, rarity):
-        self.strength, self.crit_chance, self.crit_damage = [sum(reforges_list[y][rarity][x] * talismans[y] for y in
-                                                                 range(len(reforges_list)) if reforges_list[y][rarity])
-                                                             for x in range(3)]
+        self.strength, self.crit_chance, self.crit_damage = [
+            sum(reforges_list[y][rarity][x] * talismans[y]
+            for y in range(len(reforges_list)) if reforges_list[y][rarity])
+            for x in range(3)
+        ]
         self.counts = talismans
         self.rarity = rarity
 
@@ -425,40 +428,33 @@ class Session(skypy.Player):
         base_cd = stats['crit damage']
 
         counts = self.talisman_counts()
-
-        route_set = [routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]
-        all_routes_to_max_crit = ((c, u, r, e, l) for c, u, r, e, l in product(*route_set) if
-                                  base_cc + c.crit_chance + u.crit_chance + r.crit_chance +
-                                  e.crit_chance + l.crit_chance == 100)
+        
+        print('Main algorithm started for', self.uname)
+        await self.user.send('Please wait. Your results will be sent shortly...')
+        
         best = 0
         best_route = Route([0, 0, 0, 0, 0], 0)
         best_stats = [0, 0, 0]
-        print('Main algorithm started for', self.uname)
-        await self.user.send('Please wait. Your results will be sent shortly...')
-
-        for c, u, r, e, l in all_routes_to_max_crit:
-            stats = {
-                'strength': base_str + c.strength + u.strength + r.strength + e.strength + l.strength,
-                'crit damage': base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage
-            }
-            #for modifer in self.stat_modifiers():
-                #modifer(stats)
-            strength, crit_damage = stats.values()
-
-            d = (5 + weapon_damage + strength // 5) * \
-                (1 + strength / 100) * \
-                (1 + crit_damage / 100) \
-                * self.enchantment_modifier
-
-            if d > best:
-                best = d
-                best_route = [c, u, r, e, l]
-                best_stats = [
-                    strength,
-                    base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance
-                    - self.potion_stats.get('crit chance', 0),
-                    crit_damage
-                ]
+        
+        goal = 100 - base_cc
+        for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+            cc = c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance
+            if cc == goal:
+                stats = {
+                    'strength': base_str + c.strength + u.strength + r.strength + e.strength + l.strength,
+                    'crit chance': 100,
+                    'crit damage': base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage
+                }
+                
+                for modifer in self.stat_modifiers():
+                    modifer(stats)
+                    
+                d = skypy.damage(weapon_damage, stats['strength'], stats['crit damage'], self.enchantment_modifier)
+                    
+                if d > best:
+                    best = d
+                    best_route = [c, u, r, e, l]
+                    best_stats = stats
 
         await self.user.send('Calculations complete!')
 
@@ -467,15 +463,18 @@ class Session(skypy.Player):
                 title=title,
                 color=discord.Color.orange(),
             ).set_footer(
-                text='Results do not include multipliers from weapons such as Reaper Falchion or Scorpion Foil.'
+                text='Results do not include multipliers from weapons such as Reaper Falchion or Scorpion Foil. '
                 'Talisman reforges should still be correct'
             )
-            for rarity, route in zip(["Common", "Uncommon", "Rare", "Epic", "Legendary"], routes):
-                embed.add_field(name=rarity, value=route, inline=False)
-            for name, stat in zip(['Strength', 'Crit Chance', 'Crit Damage'], stats):
-                embed.add_field(name=name, value=stat)
+            if routes:
+                for rarity, route in zip(["Common", "Uncommon", "Rare", "Epic", "Legendary"], routes):
+                    embed.add_field(name=rarity, value=route, inline=False)
+            for name, stat in stats.items():
+                embed.add_field(name=name.title(), value=stat)
             embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
             await self.user.send(embed=embed)
+
+        embeds = []
 
         await display_result('Best Route', best_route, best_stats, best)
 
@@ -483,6 +482,7 @@ class Session(skypy.Player):
         c, u, r, e, l = [v for k, v in counts.items()]
         u_needed = min(u, (100 - base_cc) // 2)
         c_needed = min(c, (100 - base_cc) - u_needed * 2)
+        
         meta_route = (
             Route([0, c - c_needed, 0, c_needed], 0),
             Route([0, u - u_needed, 0, u_needed], 1),
@@ -490,16 +490,28 @@ class Session(skypy.Player):
             Route([0, e, 0, 0], 3),
             Route([0, l, 0, 0], 4)
         )
-        meta_stats = [
-            base_str + sum(route.strength for route in meta_route),
-            base_cc + sum(route.crit_chance for route in meta_route),
-            base_cd + sum(route.crit_damage for route in meta_route)
-        ]
-        meta_damage = skypy.damage(
-            weapon_damage, base_str + meta_stats[0], base_cd + meta_stats[2], self.enchantment_modifier
-        )
+        
+        meta_stats = {
+            'strength': base_str + sum(route.strength for route in meta_route),
+            'crit chance': base_cc + sum(route.crit_chance for route in meta_route),
+            'crit damage': base_cd + sum(route.crit_damage for route in meta_route)
+        }
+        
+        for modifer in self.stat_modifiers():
+            modifer(meta_stats)
+            
+        meta_damage = skypy.damage(weapon_damage, meta_stats['strength'], meta_stats['crit damage'], self.enchantment_modifier)
 
         await display_result('Current Meta', meta_route, meta_stats, meta_damage)
+        
+        '''
+        for modifier in self.stat_modifiers():
+            modifier(stats)
+        
+        await display_result('Without Talismans', None, stats, skypy.damage(
+            weapon_damage, stats['strength'], stats['crit damage'], self.enchantment_modifier)
+        )
+        '''
 
 
 class Bot(discord.Client):
@@ -508,12 +520,29 @@ class Bot(discord.Client):
         self.sessions = {}
 
     async def on_ready(self):
-        print('Logged on as {0}!'.format(self.user))
+        print(f'Logged on as {self.user}!')
 
     async def on_message(self, message):
         user = message.author
         if user.bot:
             return
+
+        async def plug_patreon():
+            await user.send(embed=discord.Embed(
+                title='Like what you see?',
+                color=discord.Color.gold()
+            ).add_field(
+                name='\u200b',
+                value='\n'.join([
+                    'Consider a donation via patreon',
+                    'Donations help support server costs, and you can suggest new features for the bot',
+                    '',
+                    'https://www.patreon.com/user?u=28018797'
+                ])
+            ).set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
+
+        def updates():
+            return os.getenv('ENV') != 'server' and user != self.get_user(notnotmelon)
 
         def start_session():
             print(f'Starting session with {user}')
@@ -528,6 +557,7 @@ class Bot(discord.Client):
                 session = self.sessions[user]
                 if await session.advance(message) is None:
                     await user.send('Session ended!')
+                    await plug_patreon()
                     end_session()
             except:
                 await self.get_user(notnotmelon).send(traceback.format_exc())
@@ -536,13 +566,20 @@ class Bot(discord.Client):
                 end_session()
 
         if message.channel == user.dm_channel:
+            if updates():
+                await message.channel.send('The bot is currently down for updates, please check back later')
+                return
             if user not in self.sessions.keys():
                 start_session()
+                await reply()
             elif message.content.lower() in ['exit', 'quit', 'stop', 'end']:
                 end_session()
+            else:
+                await reply()
+        elif self.user in message.mentions:
+            if updates():
+                await message.channel.send('The bot is currently down for updates, please check back later')
                 return
-            await reply()
-        elif '<@652123305096249344>' in message.content:
             start_session()
             await reply()
 
