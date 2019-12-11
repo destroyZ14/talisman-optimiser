@@ -22,7 +22,7 @@ if os.environ.get('API_KEY') is None:
 
     dotenv.load_dotenv()
 
-print(os.getenv('API_KEY'), os.getenv('DISCORD_TOKEN'))
+print(os.getenv('API_KEY'))
 api_key = os.getenv('API_KEY')
 
 notnotmelon = 270352691924959243
