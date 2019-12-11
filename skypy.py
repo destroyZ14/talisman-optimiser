@@ -157,9 +157,11 @@ class Item:
             if match:
                 results[match[1].lower()] = int(match[2])
         if use_reforge is False:
-            for stat, amount in reforges[self.reforge()][self.rarity_level()].items():
-                if stat in results:
-                    results[stat] -= amount
+            reforge = self.reforge()
+            if reforge:
+                for stat, amount in reforges[self.reforge()][self.rarity_level()].items():
+                    if stat in results:
+                        results[stat] -= amount
         return results
 
 
@@ -209,7 +211,7 @@ class Player:
 
             for k, v in profile_ids.items():
                 self.profiles[v['cute_name']] = k
-        except KeyError:
+        except (KeyError, TypeError):
             raise NeverPlayedSkyblockError from None
 
     def __call_api__(self, endpoint):
