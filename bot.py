@@ -148,11 +148,12 @@ class Route:
         ]
         self.counts = talismans
         self.rarity = rarity
+        self.rarity_str = ["common", "uncommon", "rare", "epic", "legendary"][self.rarity]
 
     def __repr__(self):
         return ', '.join([f'{c} '
                           f'{"godly/zealous" if self.rarity < 2 and name == "godly" else name} '
-                          f'{rarity_grammar(["common", "uncommon", "rare", "epic", "legendary"][self.rarity], c)}'
+                          f'{rarity_grammar(self.rarity_str, c)}'
                           for name, c in zip(relavant_reforges.keys(), self.counts) if c != 0])
 
 
@@ -467,8 +468,8 @@ class Session(skypy.Player):
                 'Talisman reforges should still be correct'
             )
             if routes:
-                for rarity, route in zip(["Common", "Uncommon", "Rare", "Epic", "Legendary"], routes):
-                    embed.add_field(name=rarity, value=route, inline=False)
+                for route in routes:
+                    embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
             for name, stat in stats.items():
                 embed.add_field(name=name.title(), value=stat)
             embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
