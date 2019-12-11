@@ -123,7 +123,7 @@ class Item:
     def rarity_level(self):
         return ['common', 'uncommon', 'rare', 'epic', 'legendary', 'special'].index(self.rarity())
 
-    def classifier(self):
+    def classifier(self): # Should support minons and bugged items without rarities, but dosen't L
         if self.internal_name() == 'SKYBLOCK_MENU':
             return None
         try:
@@ -427,7 +427,7 @@ class Player:
             else:
                 break
         if superior == 4:
-            modifers.append(lambda stats: {stat: amount * 1.05 for stat, amount in stats})
+            modifers.append(lambda stats: {stat: amount * 1.05 for stat, amount in stats.items()})
         elif mastiff == 4:
             def _(stats):
                 stats['crit damage'] /= 2

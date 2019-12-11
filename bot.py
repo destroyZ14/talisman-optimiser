@@ -1,3 +1,15 @@
+'''
+What's new in version 5?
+Skyblock API support :o
+Talisman optimizer is now a Discord bot :o
+Tarantula helmet support :o
+Potion support :o
+Superior support
+Mastiff support
+Fishing rod support
+Major speed and memory improvements
+'''
+
 import os
 import discord
 import skypy
@@ -5,15 +17,115 @@ from skypy import SkyblockError
 import traceback
 from itertools import product
 
+if os.environ.get('API_KEY') is None:
+    import dotenv
+
+    dotenv.load_dotenv()
+
+api_key = os.getenv('API_KEY')
+
 notnotmelon = 270352691924959243
-api_key = os.environ['API_KEY']
 
 damaging_potions = [
     {'name': 'critical', 'stats': {'crit chance': [0, 10, 15, 20, 25], 'crit damage': [0, 10, 20, 30, 40]}},
     {'name': 'strength', 'stats': {'strength': [0, 5.25, 13.125, 21, 31.5, 42, 52.5, 63, 78.75]}},  # Assume cola
     {'name': 'spirit', 'stats': {'crit damage': [0, 10, 20, 30, 40]}}
-    # 'archery': irrelevant since it multiplies afterwards everything else
+    # 'archery': irrelevant since it multiplies afterwards everything else # not true this is actually a bug
 ]
+
+# list of all enchantment powers per level. can be a function or a number
+enchantment_values = {
+    # sword always
+    'sharpness': 5,
+    'giant_killer': lambda level: 25 if level > 0 else 0,
+    # sword sometimes
+    'smite': 8,
+    'bane_of_arthropods': 8,
+    'first_strike': 25,
+    'ender_slayer': 12,
+    'cubism': 10,
+    'execute': 10,
+    'impaling': 12.5,
+    # bow always
+    'power': 8,
+    # bow sometimes
+    'dragon_hunter': 8,
+    'snipe': 5,  # Would be lower except I only use this for drags and magma bosses
+    # rod always
+    'spiked_hook': 5
+}
+
+# list of relevant enchants for common mobs
+activities = {
+    'Slayer Bosses': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'smite',
+        'bane_of_arthropods',
+        'execute'
+    ],
+    'Dragons': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'ender_slayer',
+        'execute',
+        'dragon_hunter',
+        'snipe'
+    ],
+    'Zealots': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'ender_slayer',
+        'first_strike'
+    ],
+    'Sea Creatures': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'first_strike'
+    ],
+    'Players': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'execute',
+        'snipe'
+    ],
+    'Magma Boss': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'cubism',
+        'execute',
+        'snipe'
+    ],
+    'Horseman': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'execute',
+        'snipe'
+    ],
+    'Other': [
+        'giant_killer',
+        'sharpness',
+        'power',
+        'spiked_hook',
+        'smite',
+        'bane_of_arthropods',
+        'first_strike'
+    ]
+}
 
 relavant_reforges = {
     'forceful': (None, None, (7, 0, 0), (10, 0, 0), (15, 0, 0)),
@@ -61,7 +173,7 @@ class Session(skypy.Player):
         embed = discord.Embed(title='Before you start:', color=discord.Color.green())
         for i, rule in enumerate([
             'Put the armor on that you will optimize with',
-            'Put the weapon you want to optimise with in the first hotbar slot',
+            'Put all your talismen in your inventory or talisman bag',
             'Enable your skyblock API settings [skyblock menu > settings > api settings]',
             'Log out of Hypixel so that the API syncs'
         ]):
@@ -154,7 +266,7 @@ class Session(skypy.Player):
                 color=discord.Color.gold()
             ).add_field(name='\u200b', value='\n\n'.join(
                 [weapon.name() for weapon in self.weapons])
-            ))
+                        ))
             return self.collect_weapon
 
     async def collect_weapon(self, message):
@@ -214,7 +326,7 @@ class Session(skypy.Player):
             self.potion_id += 1
             if self.potion_id >= len(damaging_potions):
                 print(f'Potion stats for {self.user}: {self.potion_stats}')
-                return await self.calculate_optimal_talismans(message)
+                return await self.ask_enchantment_modifier(message)
             else:
                 return await self.ask_potion(message)
         else:
@@ -233,45 +345,45 @@ class Session(skypy.Player):
             })
             self.potion_id += 1
             if self.potion_id >= len(damaging_potions):
-                print(self.potion_stats)
-                return None
+                print(f'Potion stats for {self.user}: {self.potion_stats}')
+                return await self.ask_enchantment_modifier(message)
             else:
                 return await self.ask_potion(message)
         except (KeyError, ValueError):
             await self.user.send('Invalid response! Enter a number')
             return await self.ask_potion_level(message)
 
-    def enchantment_modifier(self, weapon):
-        enchantments = weapon.enchantments()
-        name = weapon.internal_name()
-        result = self.skills['combat'] * 4
+    async def ask_enchantment_modifier(self, message):
+        if self.weapon.internal_name() == 'SCORPION_BOW':  # thanks hypixel
+            self.enchantment_modifier = 0
+            return self.calculate_optimal_talismans
+        await self.user.send(embed=discord.Embed(
+            title='Which mob will you target with this setup?',
+            color=discord.Color.dark_orange()
+        ).add_field(
+            name='\u200b',
+            value='\n'.join(k for k, _ in activities.items()),
+        ))
+        return self.collect_enchantment_modifier
 
-        if weapon.classifier() == 'SWORD':
-            result += enchantments.get('sharpness', 0) * 5
-            result += 25 if 'giant killer' in enchantments else 0
-            if 'smite' in enchantments or 'bane of arthropods' in enchantments or name in [
-                'REAPER_FALCHION',
-                'REVENANT_FALCHION',
-                'RECLUSE_FANG',
-                'SCORPION_FOIL',
-                'SHAMAN_SWORD',
-                'POOCH_SWORD'
-            ]:
-                result += enchantments.get('bane of arthropods', 0) * 8
-                result += enchantments.get('smite', 0) * 8
-                result += enchantments.get('execute', 0) * 50
+    async def collect_enchantment_modifier(self, message):
+        enchantments = self.weapon.enchantments()
+        self.enchantment_modifier = self.skills['combat'] * 4
+
+        if message.content.title() not in activities:
+            await self.user.send('Invalid response! Pick one of the activities')
+            return await self.ask_enchantment_modifier(message)
+
+        for enchantment in activities[message.content.title()]:
+            ench_strength = enchantment_values[enchantment]
+            if callable(ench_strength):
+                self.enchantment_modifier += ench_strength(enchantments.get(enchantment, 0))
             else:
-                result += enchantments.get('first strike', 0) * 25
-                result += enchantments.get('ender slayer', 0) * 12
-        elif weapon.classifier() == 'BOW':
-            if name == 'SCORPION_BOW':
-                return 0
-            result += enchantments.get('dragon hunter', 0) * 8
-            result += enchantments.get('power', 0) * 8
-            result += enchantments.get('snipe', 0) * 2
-        elif weapon.classifier() == 'FISHING ROD':
-            result += enchantments.get('spiked hook', 0) * 5
-        return result
+                self.enchantment_modifier += ench_strength * enchantments.get(enchantment, 0)
+
+        print(f'Enchantment modifier for {self.user}: {self.enchantment_modifier}')
+        self.enchantment_modifier = (1 + self.enchantment_modifier / 100)
+        return await self.calculate_optimal_talismans(message)
 
     async def calculate_optimal_talismans(self, message):
         def routes(count, size, rarity):
@@ -310,69 +422,83 @@ class Session(skypy.Player):
         base_str = stats['strength']
         base_cc = stats['crit chance']
         base_cd = stats['crit damage']
-        ench_modifier = (1 + self.enchantment_modifier(self.weapon) / 100)
 
         counts = self.talisman_counts()
 
-        route_set = [routes(counts[i], 4, rarity_num) for rarity_num, i in enumerate(counts.keys())]
-        all_routes_to_max_crit = (x for x in product(*route_set) if
-                                  base_cc + x[0].crit_chance + x[1].crit_chance + x[2].crit_chance +
-                                  x[3].crit_chance == 100)
+        route_set = [routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]
+        all_routes_to_max_crit = ((c, u, r, e, l) for c, u, r, e, l in product(*route_set) if
+                                  base_cc + c.crit_chance + u.crit_chance + r.crit_chance +
+                                  e.crit_chance + l.crit_chance == 100)
         best = 0
         best_route = Route([0, 0, 0, 0, 0], 0)
         best_stats = [0, 0, 0]
         print('Main algorithm started for', self.uname)
         await self.user.send('Please wait. Your results will be sent shortly...')
 
-        for x in all_routes_to_max_crit:
+        for c, u, r, e, l in all_routes_to_max_crit:
             stats = {
-                'strength': base_str + x[0].strength + x[1].strength + x[2].strength + x[3].strength,
-                'crit_damage': base_cd + x[0].crit_damage + x[1].crit_damage + x[2].crit_damage + x[3].crit_damage
+                'strength': base_str + c.strength + u.strength + r.strength + e.strength + l.strength,
+                'crit damage': base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage
             }
-            for modifer in self.stat_modifiers():
-                modifer(stats)
+            #for modifer in self.stat_modifiers():
+                #modifer(stats)
             strength, crit_damage = stats.values()
-            d = (5 + weapon_damage + strength // 5) * (1 + strength / 100) * (1 + crit_damage / 100) * ench_modifier
+
+            d = (5 + weapon_damage + strength // 5) * \
+                (1 + strength / 100) * \
+                (1 + crit_damage / 100) \
+                * self.enchantment_modifier
+
             if d > best:
                 best = d
-                best_route = x
+                best_route = [c, u, r, e, l]
                 best_stats = [
                     strength,
-                    base_cc + x[0].crit_chance + x[1].crit_chance + x[2].crit_chance + x[3].crit_chance - self.potion_stats.get('crit chance', 0),
+                    base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance
+                    - self.potion_stats.get('crit chance', 0),
                     crit_damage
                 ]
 
-        embed = discord.Embed(
-            title='Calculations Complete!',
-            color=discord.Color.orange()
-        )
-        for rarity, route in zip(["Common", "Uncommon", "Rare", "Epic", "Legendary"], best_route):
-            embed.add_field(name=rarity, value=route, inline=False)
-        for name, stat in zip(['Strength', 'Crit Chance', 'Crit Damage'], best_stats):
-            embed.add_field(name=name, value=stat)
-        embed.add_field(name='\u200b', value=f'This setup should give {round(best)}')
-        await self.user.send(embed=embed)
+        await self.user.send('Calculations complete!')
 
-        """
+        async def display_result(title, routes, stats, damage):
+            embed = discord.Embed(
+                title=title,
+                color=discord.Color.orange(),
+            ).set_footer(
+                text='Results do not include multipliers from weapons such as Reaper Falchion or Scorpion Foil.'
+                'Talisman reforges should still be correct'
+            )
+            for rarity, route in zip(["Common", "Uncommon", "Rare", "Epic", "Legendary"], routes):
+                embed.add_field(name=rarity, value=route, inline=False)
+            for name, stat in zip(['Strength', 'Crit Chance', 'Crit Damage'], stats):
+                embed.add_field(name=name, value=stat)
+            embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
+            await self.user.send(embed=embed)
+
+        await display_result('Best Route', best_route, best_stats, best)
+
         # Calculates the spread using the current meta
+        c, u, r, e, l = [v for k, v in counts.items()]
         u_needed = min(u, (100 - base_cc) // 2)
         c_needed = min(c, (100 - base_cc) - u_needed * 2)
         meta_route = (
-            [0, c - c_needed, 0, c_needed],
-            [0, u - u_needed, 0, u_needed],
-            [0, r, 0, 0],
-            [0, e, 0, 0],
-            [0, l, 0, 0]
+            Route([0, c - c_needed, 0, c_needed], 0),
+            Route([0, u - u_needed, 0, u_needed], 1),
+            Route([0, r, 0, 0], 2),
+            Route([0, e, 0, 0], 3),
+            Route([0, l, 0, 0], 4)
         )
-        meta_stats = [base_str, base_cc, base_cd]
-        for rarity, tali_numbers in enumerate(meta_route):
-            for reforge, tali_number in enumerate(tali_numbers):
-                for stat in range(3):
-                    if talismans_raw[reforge][rarity]:
-                        meta_stats[stat] += talismans_raw[reforge][rarity][stat] * tali_number
-        """
+        meta_stats = [
+            base_str + sum(route.strength for route in meta_route),
+            base_cc + sum(route.crit_chance for route in meta_route),
+            base_cd + sum(route.crit_damage for route in meta_route)
+        ]
+        meta_damage = skypy.damage(
+            weapon_damage, base_str + meta_stats[0], base_cd + meta_stats[2], self.enchantment_modifier
+        )
 
-        return None
+        await display_result('Current Meta', meta_route, meta_stats, meta_damage)
 
 
 class Bot(discord.Client):
@@ -422,4 +548,4 @@ class Bot(discord.Client):
 
 client = Bot()
 print('Attempting to connect to discord...')
-client.run(os.environ['DISCORD_TOKEN'])
+client.run(os.getenv('DISCORD_TOKEN'))
