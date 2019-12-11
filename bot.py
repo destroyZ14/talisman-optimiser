@@ -22,7 +22,8 @@ if os.environ.get('API_KEY') is None:
 
     dotenv.load_dotenv()
 
-api_key = os.environ.get('API_KEY')
+print(os.getenv('API_KEY'), os.getenv('DISCORD_TOKEN'))
+api_key = os.getenv('API_KEY')
 
 notnotmelon = 270352691924959243
 
@@ -548,4 +549,4 @@ class Bot(discord.Client):
 
 client = Bot()
 print('Attempting to connect to discord...')
-client.run(os.environ.get('DISCORD_TOKEN'))
+client.run(os.getenv('DISCORD_TOKEN'))
