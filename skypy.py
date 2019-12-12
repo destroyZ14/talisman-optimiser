@@ -265,13 +265,26 @@ class Player:
 
             self.inventory = decode_inventory_data(v['inv_contents']['data'])
             self.echest = decode_inventory_data(v['ender_chest_contents']['data'])
-            self.talisman_bag = decode_inventory_data(v['talisman_bag']['data'])
-            self.potion_bag = decode_inventory_data(v['potion_bag']['data'])
-            self.fish_bag = decode_inventory_data(v['fishing_bag']['data'])
-            self.quiver = decode_inventory_data(v['quiver']['data'])
             self.candy_bag = decode_inventory_data(v['candy_inventory_contents']['data'])
             self.armor = decode_inventory_data(v['inv_armor']['data'])
             self.weapons = [item for item in self.inventory + self.echest if item.classifier() in ('sword', 'bow', 'fishing rod')]
+
+            try:
+                self.talisman_bag = decode_inventory_data(v['talisman_bag']['data'])
+            except KeyError:
+                self.talisman_bag = []
+            try:
+                self.potion_bag = decode_inventory_data(v['potion_bag']['data'])
+            except KeyError:
+                self.potion_bag = []
+            try:
+                self.fish_bag = decode_inventory_data(v['fishing_bag']['data'])
+            except KeyError:
+                self.fish_bag = []
+            try:
+                self.quiver = decode_inventory_data(v['quiver']['data'])
+            except KeyError:
+                self.quiver = []
 
             self.active_talismen = []
             talisman_names = [x.internal_name() for x in self.inventory + self.talisman_bag]
@@ -339,7 +352,8 @@ class Player:
                 for k, v in vars(self).items():
                     if k not in ('__api_data__', 'echest', 'inventory', 'talisman_bag'):
                         print('--------', k, v)
-        except KeyError:
+        except KeyError as k:
+            print(k)
             raise APIDisabledError
 
     def is_player_online(self):

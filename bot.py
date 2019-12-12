@@ -224,9 +224,6 @@ class Session(skypy.Player):
         try:
             self.set_profile(profile)
             return True
-        except KeyError:
-            await self.user.send('Choose one of the listed profiles')
-            return False
         except SkyblockError:
             await self.user.send(
                 embed=discord.Embed(
@@ -240,9 +237,13 @@ class Session(skypy.Player):
             return False
 
     async def collect_profile(self, message):
-        if await self.try_profile(message, self.profiles[message.content.capitalize()]):
-            return await self.display_talisman_warnings(message)
-        else:
+        try:
+            if await self.try_profile(message, self.profiles[message.content.capitalize()]):
+                return await self.display_talisman_warnings(message)
+            else:
+                return await self.ask_profile(message)
+        except KeyError:
+            await self.user.send('Choose one of the listed profiles')
             return await self.ask_profile(message)
 
     async def display_talisman_warnings(self, message):
