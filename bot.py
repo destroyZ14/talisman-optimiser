@@ -489,7 +489,7 @@ class Session(skypy.Player):
             )
             if routes:
                 for route in routes:
-                    if route is not None:
+                    if str(route):
                         embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
             for name, stat in stats.items():
                 embed.add_field(name=name.title(), value=stat)
