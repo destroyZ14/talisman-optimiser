@@ -193,6 +193,7 @@ class Session(skypy.Player):
     async def collect_uname(self, message):
         try:
             super().__init__(os.getenv('API_KEY'), message.content)
+            print(f'{self.user} linked to {message.content}')
             await self.user.send('Username accepted')
             return await self.ask_profile(message)
         except skypy.NeverPlayedSkyblockError:
@@ -204,8 +205,10 @@ class Session(skypy.Player):
 
     async def ask_profile(self, message):
         if len(self.profiles) == 1:
-            self.set_profile(list(self.profiles.values())[0])
-            return await self.display_talisman_warnings(message)
+            if await self.try_profile(message, list(self.profiles.values())[0]):
+                return await self.display_talisman_warnings(message)
+            else:
+                return await self.ask_uname(message)
         else:
             embed = discord.Embed(
                 title='Which profile do you want to use?',
@@ -217,13 +220,13 @@ class Session(skypy.Player):
             await self.user.send(embed=embed)
             return self.collect_profile
 
-    async def collect_profile(self, message):
+    async def try_profile(self, message, profile):
         try:
-            self.set_profile(self.profiles[message.content.capitalize()])
-            return await self.display_talisman_warnings(message)
+            self.set_profile(profile)
+            return True
         except KeyError:
-            await self.user.send("Invalid profile! Try again")
-            return await self.ask_profile(message)
+            await self.user.send('Choose one of the listed profiles')
+            return False
         except SkyblockError:
             await self.user.send(
                 embed=discord.Embed(
@@ -231,9 +234,15 @@ class Session(skypy.Player):
                     description='Re-enable them with [skyblock menu > settings > api settings]'
                 ).set_footer(
                     text='Sometimes this message appears even if your API settings are enabled. If so, exit Hypixel '
-                         'and try again '
+                         'and try again'
                 )
             )
+            return False
+
+    async def collect_profile(self, message):
+        if await self.try_profile(message, self.profiles[message.content.capitalize()]):
+            return await self.display_talisman_warnings(message)
+        else:
             return await self.ask_profile(message)
 
     async def display_talisman_warnings(self, message):
@@ -266,12 +275,19 @@ class Session(skypy.Player):
             self.weapon = self.weapons[0]
             return await self.test_profile(message)
         else:
-            await self.user.send(embed=discord.Embed(
+            embed=discord.Embed(
                 title='Which weapon do you want to use?',
                 color=discord.Color.gold()
-            ).add_field(name='\u200b', value='\n\n'.join(
-                [weapon.name() for weapon in self.weapons])
-                        ))
+            ).set_footer(
+                text='Enter the weapon name or the weapon number'
+            )
+            for i, weapon in enumerate(self.weapons):
+                embed.add_field(
+                    name = f'{i + 1} >',
+                    value = weapon.name(),
+                    inline=False
+                )
+            await self.user.send(embed=embed)
             return self.collect_weapon
 
     async def collect_weapon(self, message):
@@ -279,6 +295,9 @@ class Session(skypy.Player):
         content = message.content.lower()
         if content in names:
             self.weapon = self.weapons[names.index(content)]
+            return await self.test_profile(message)
+        elif content.isnumeric():
+            self.weapon = self.weapons[int(content) - 1]
             return await self.test_profile(message)
         else:
             return await self.ask_weapon(message)
@@ -464,12 +483,14 @@ class Session(skypy.Player):
                 title=title,
                 color=discord.Color.orange(),
             ).set_footer(
-                text='Results do not include multipliers from weapons such as Reaper Falchion or Scorpion Foil. '
-                'Talisman reforges should still be correct'
+                text='Damage multipliers from weapons such as\n'
+                'scorpion foil or reaper falichion are not included.\n'
+                'Talisman results should still be correct.'
             )
             if routes:
                 for route in routes:
-                    embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
+                    if route is not None:
+                        embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
             for name, stat in stats.items():
                 embed.add_field(name=name.title(), value=stat)
             embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
@@ -540,7 +561,7 @@ class Bot(discord.Client):
                     '',
                     'https://www.patreon.com/user?u=28018797'
                 ])
-            ).set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
+            ))#.set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
 
         def updates():
             return os.getenv('ENV') != 'server' and user != self.get_user(notnotmelon)
@@ -561,8 +582,9 @@ class Bot(discord.Client):
                     await plug_patreon()
                     end_session()
             except:
-                await self.get_user(notnotmelon).send(traceback.format_exc())
+                await self.get_user(notnotmelon).send(f'{user}\n{traceback.format_exc()}')
                 await user.send('ERROR: Session closed. Logs have been sent to the developer')
+                print(user)
                 traceback.print_exc()
                 end_session()
 
