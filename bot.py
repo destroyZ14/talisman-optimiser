@@ -539,11 +539,12 @@ class Session(skypy.Player):
                     best_str = strength
                     best_cc = cc_mod(base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance)
                     best_cd = crit_damage
-
                     
         await self.user.send('Calculations complete!')
 
-        async def display_result(title, routes, strength, crit_chance, crit_damage, damage):
+        cc_mod = cc_mod or (lambda x: x)
+
+        async def display_result(title, routes, strength, crit_chance, crit_damage, damage, non_crit):
             embed = discord.Embed(
                 title=title,
                 color=discord.Color.orange(),
@@ -557,14 +558,15 @@ class Session(skypy.Player):
                     if str(route):
                         embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
             embed.add_field(name='Strength', value=math.floor(strength))
-            embed.add_field(name='Crit Chance', value=math.floor(crit_chance))
+            embed.add_field(name='Crit Chance', value=math.floor(crit_chance) - self.potion_stats.get('crit chance', 0))
             embed.add_field(name='Crit Damage', value=math.floor(crit_damage))
-            embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
+            embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage', inline=False)
+            embed.add_field(name=f'Without crit: {non_crit}', value='\u200b ', inline=False)
             await self.user.send(embed=embed)
 
-        embeds = []
-
-        await display_result('Best Route', best_route, best_str, best_cc, best_cd, best)
+        await display_result('Best Route', best_route, best_str, best_cc, best_cd, best,
+            skypy.damage(weapon_damage, best_str, 0, self.enchantment_modifier)
+        )
 
         # Calculates the spread using the current meta
         c, u, r, e, l = [v for k, v in counts.items()]
@@ -585,7 +587,9 @@ class Session(skypy.Player):
             
         meta_damage = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
-        await display_result('Current Meta', meta_route, strength, crit_chance, crit_damage, meta_damage)
+        await display_result('Current Meta', meta_route, strength, crit_chance, crit_damage, meta_damage,
+            skypy.damage(weapon_damage, strength, 0, self.enchantment_modifier)
+        )
         
         '''
         for modifier in self.stat_modifiers():
