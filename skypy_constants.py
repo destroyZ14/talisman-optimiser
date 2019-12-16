@@ -25,7 +25,7 @@ slayer_rewards = {
     'spider': (('crit damage', 1), ('crit damage', 1), ('crit damage', 1), ('crit damage', 1), ('crit damage', 2),
                ('crit damage', 2), ('crit chance', 1), ('crit damage', 3), ('crit chance', 3)),
     'wolf': (('speed', 1), ('health', 2), ('speed', 1), ('health', 2), ('crit damage', 1), ('health', 3),
-             ('crit damage', 2), ('speed', 1), ('', 0))
+             ('crit damage', 2), ('speed', 1), ('health', 5))
 }
 
 fairy_soul_hp_bonus = [3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16,

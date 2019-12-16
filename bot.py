@@ -32,7 +32,7 @@ damaging_potions = [
     {'name': 'critical', 'stats': {'crit chance': [0, 10, 15, 20, 25], 'crit damage': [0, 10, 20, 30, 40]}},
     {'name': 'strength', 'stats': {'strength': [0, 5.25, 13.125, 21, 31.5, 42, 52.5, 63, 78.75]}},  # Assume cola
     {'name': 'spirit', 'stats': {'crit damage': [0, 10, 20, 30, 40]}},
-    {'name': 'archery', 'stats': {'enchantment modifier': []}}
+    {'name': 'archery', 'stats': {'enchantment modifier': [0, 13.125, 26.25, 52.5, 78.75]}}
 ]
 
 # list of all enchantment powers per level. can be a function or a number
@@ -335,7 +335,7 @@ class Session(skypy.Player):
         else:
             await self.user.send('Please answer with YES or NO')
             return await self.test_profile(message)
-
+        
     async def start_potions(self, message):
         self.potion_id = 0
         self.potion_stats = {}
@@ -367,7 +367,7 @@ class Session(skypy.Player):
         self.potion_id += 1
         if self.potion_id >= len(damaging_potions):
             await client.log(f'Potion stats for {self.user}: {self.potion_stats}')
-            return await self.ask_enchantment_modifier(message)
+            return await self.check_orbs(message)
         else:
             return await self.ask_potion(message)
 
@@ -405,6 +405,43 @@ class Session(skypy.Player):
         else:
             await self.user.send('Please answer with YES or NO')
             return await self.ask_crit_goal(message)
+
+    async def check_orbs(self, message):
+        self.mana = False
+        self.over = False
+        self.tuba = False
+        for item in self.inventory + self.echest:
+            name = item.internal_name()
+            if name == 'WEIRD_TUBA':
+                self.tuba = True
+            elif name == 'OVER_FLUX_POWER_ORB':
+                self.over = True
+            elif name == 'MANA_FLUX_POWER_ORB':
+                self.mana = True
+        return await self.ask_orbs(message)
+        
+    async def ask_orbs(self, message):
+        if self.over:
+            self.over = False
+            await self.user.send('I detected an overflux orb. Should I include that in the calcuations? [YES/NO]')
+            self.orb_queue = {'strength': 25}
+        elif self.mana:
+            self.mana = False
+            await self.user.send('I detected a mana flux orb. Should I include that in the calcuations? [YES/NO]')
+            self.orb_queue = {'strength': 10}
+        elif self.tuba:
+            self.tuba = False
+            await self.user.send('I detected a weird tuba. Should I include that in the calcuations? [YES/NO]')
+            self.orb_queue = {'strength': 30}
+        else:
+            return await self.ask_enchantment_modifier(message)
+        return self.collect_orbs
+        
+    async def collect_orbs(self, message):
+        if message.content.lower() == 'yes':
+            for stat, amount in self.orb_queue.items():
+                self.potion_stats[stat] = self.potion_stats.get(stat, 0) + amount
+        return await self.ask_orbs(message)
 
     async def ask_enchantment_modifier(self, message):
         if self.weapon.internal_name() == 'SCORPION_BOW':  # thanks hypixel
@@ -561,7 +598,7 @@ class Session(skypy.Player):
             embed.add_field(name='Crit Chance', value=math.floor(crit_chance) - self.potion_stats.get('crit chance', 0))
             embed.add_field(name='Crit Damage', value=math.floor(crit_damage))
             embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage', inline=False)
-            embed.add_field(name=f'Without crit: {non_crit}', value='\u200b ', inline=False)
+            embed.add_field(name=f'> {round(non_crit)} without crit', value='\u200b ', inline=False)
             await self.user.send(embed=embed)
 
         await display_result('Best Route', best_route, best_str, best_cc, best_cd, best,
@@ -640,7 +677,6 @@ class Bot(discord.Client):
             ))#.set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
 
         def updates():
-            return False
             return os.getenv('ENV') != 'server' and user != self.get_user(notnotmelon)
 
         async def start_session():
