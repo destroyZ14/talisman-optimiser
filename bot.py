@@ -16,13 +16,14 @@ import skypy
 from skypy import SkyblockError
 import traceback
 from itertools import product
+import math
 
 if os.environ.get('API_KEY') is None:
     import dotenv
 
     dotenv.load_dotenv()
 
-print(os.getenv('API_KEY'))
+print(os.getenv('ENV'))
 api_key = os.getenv('API_KEY')
 
 notnotmelon = 270352691924959243
@@ -30,8 +31,8 @@ notnotmelon = 270352691924959243
 damaging_potions = [
     {'name': 'critical', 'stats': {'crit chance': [0, 10, 15, 20, 25], 'crit damage': [0, 10, 20, 30, 40]}},
     {'name': 'strength', 'stats': {'strength': [0, 5.25, 13.125, 21, 31.5, 42, 52.5, 63, 78.75]}},  # Assume cola
-    {'name': 'spirit', 'stats': {'crit damage': [0, 10, 20, 30, 40]}}
-    # 'archery': irrelevant since it multiplies afterwards everything else # not true this is actually a bug
+    {'name': 'spirit', 'stats': {'crit damage': [0, 10, 20, 30, 40]}},
+    {'name': 'archery', 'stats': {'enchantment modifier': []}}
 ]
 
 # list of all enchantment powers per level. can be a function or a number
@@ -138,7 +139,6 @@ relavant_reforges = {
 }
 reforges_list = list(relavant_reforges.values())
 
-
 class Route:
     def __init__(self, talismans, rarity):
         self.strength, self.crit_chance, self.crit_damage = [
@@ -193,7 +193,7 @@ class Session(skypy.Player):
     async def collect_uname(self, message):
         try:
             super().__init__(os.getenv('API_KEY'), message.content)
-            print(f'{self.user} linked to {message.content}')
+            await client.log(f'{self.user} linked to {message.content}')
             await self.user.send('Username accepted')
             return await self.ask_profile(message)
         except skypy.NeverPlayedSkyblockError:
@@ -256,8 +256,7 @@ class Session(skypy.Player):
         if bad:
             await self.user.send(
                 embed=discord.Embed(
-                    name='Warning!',
-                    description='You have unnecessary talismen',
+                    title='You have unnecessary talismen!',
                     color=discord.Color.red()
                 ).add_field(
                     name='\u200b',
@@ -298,7 +297,10 @@ class Session(skypy.Player):
             self.weapon = self.weapons[names.index(content)]
             return await self.test_profile(message)
         elif content.isnumeric():
-            self.weapon = self.weapons[int(content) - 1]
+            try:
+                self.weapon = self.weapons[int(content) - 1]
+            except IndexError:
+                return self.ask_weapon(message)
             return await self.test_profile(message)
         else:
             return await self.ask_weapon(message)
@@ -340,7 +342,11 @@ class Session(skypy.Player):
         return await self.ask_potion(message)
 
     async def ask_potion(self, message):
-        await self.user.send(f'Do you use {damaging_potions[self.potion_id]["name"]} pots with this build? [YES/NO]')
+        potion_name = damaging_potions[self.potion_id]['name']
+        self.crit = potion_name == 'critical'
+        if potion_name == 'archery' and self.weapon.classifier() != 'bow':
+            return await self.advance_potion(message)
+        await self.user.send(f'Do you use {potion_name} pots with this build? [YES/NO]')
         return self.collect_potion
 
     async def collect_potion(self, message):
@@ -348,14 +354,21 @@ class Session(skypy.Player):
         if response == 'yes':
             return await self.ask_potion_level(message)
         elif response == 'no':
-            self.potion_id += 1
-            if self.potion_id >= len(damaging_potions):
-                print(f'Potion stats for {self.user}: {self.potion_stats}')
-                return await self.ask_enchantment_modifier(message)
+            if self.crit:
+                self.potion_id += 1
+                return await self.ask_crit_goal(message)
             else:
-                return await self.ask_potion(message)
+                return await self.advance_potion(message)
         else:
             await self.user.send('Please answer with YES or NO')
+            return await self.ask_potion(message)
+
+    async def advance_potion(self, message):
+        self.potion_id += 1
+        if self.potion_id >= len(damaging_potions):
+            await client.log(f'Potion stats for {self.user}: {self.potion_stats}')
+            return await self.ask_enchantment_modifier(message)
+        else:
             return await self.ask_potion(message)
 
     async def ask_potion_level(self, message):
@@ -364,19 +377,34 @@ class Session(skypy.Player):
 
     async def collect_potion_level(self, message):
         try:
+            level = int(message.content)
+            
+            if level < 0:
+                raise ValueError
+            
             self.potion_stats.update({
-                stat: amounts[int(message.content)] + self.potion_stats.get(stat, 0)
+                stat: amounts[level] + self.potion_stats.get(stat, 0)
                 for stat, amounts in damaging_potions[self.potion_id]['stats'].items()
             })
-            self.potion_id += 1
-            if self.potion_id >= len(damaging_potions):
-                print(f'Potion stats for {self.user}: {self.potion_stats}')
-                return await self.ask_enchantment_modifier(message)
-            else:
-                return await self.ask_potion(message)
-        except (KeyError, ValueError):
+            return await self.advance_potion(message)
+        except (KeyError, ValueError, IndexError):
             await self.user.send('Invalid response! Enter a number')
             return await self.ask_potion_level(message)
+
+    async def ask_crit_goal(self, message):
+        await self.user.send(f'You indicated that you want don\'t want to use crit pots\nDo you want to have 80 crit chance anyway? [YES/NO]')
+        return self.collect_crit_goal
+        
+    async def collect_crit_goal(self, message):
+        response = message.content.lower()
+        if response == 'yes':
+            self.potion_stats['crit chance'] = self.potion_stats.get('crit chance', 0) + 20
+            return await self.ask_potion(message)
+        elif response == 'no':
+            return await self.advance_potion(message)
+        else:
+            await self.user.send('Please answer with YES or NO')
+            return await self.ask_crit_goal(message)
 
     async def ask_enchantment_modifier(self, message):
         if self.weapon.internal_name() == 'SCORPION_BOW':  # thanks hypixel
@@ -393,7 +421,7 @@ class Session(skypy.Player):
 
     async def collect_enchantment_modifier(self, message):
         enchantments = self.weapon.enchantments()
-        self.enchantment_modifier = self.skills['combat'] * 4
+        self.enchantment_modifier = self.skills['combat'] * 4 + self.potion_stats.get('enchantment modifier', 0)
 
         if message.content.title() not in activities:
             await self.user.send('Invalid response! Pick one of the activities')
@@ -406,7 +434,7 @@ class Session(skypy.Player):
             else:
                 self.enchantment_modifier += ench_strength * enchantments.get(enchantment, 0)
 
-        print(f'Enchantment modifier for {self.user}: {self.enchantment_modifier}')
+        await client.log(f'Enchantment modifier for {self.user}: {self.enchantment_modifier}')
         self.enchantment_modifier = (1 + self.enchantment_modifier / 100)
         return await self.calculate_optimal_talismans(message)
 
@@ -450,36 +478,72 @@ class Session(skypy.Player):
 
         counts = self.talisman_counts()
         
-        print('Main algorithm started for', self.uname)
+        await client.log('Main algorithm started for', self.uname)
         await self.user.send('Please wait. Your results will be sent shortly...')
         
         best = 0
-        best_route = Route([0, 0, 0, 0, 0], 0)
-        best_stats = [0, 0, 0]
+        best_route = []
+        best_str = 0
+        best_cc = 0
+        best_cd = 0
         
-        goal = 100 - base_cc
-        for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
-            cc = c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance
-            if cc == goal:
-                stats = {
-                    'strength': base_str + c.strength + u.strength + r.strength + e.strength + l.strength,
-                    'crit chance': 100,
-                    'crit damage': base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage
-                }
-                
-                for modifer in self.stat_modifiers():
-                    modifer(stats)
-                    
-                d = skypy.damage(weapon_damage, stats['strength'], stats['crit damage'], self.enchantment_modifier)
-                    
+        stat_modifiers = self.stat_modifiers()
+        str_mod = stat_modifiers.get('strength', lambda x: x)
+        cc_mod = stat_modifiers.get('crit chance', lambda x: x)
+        cd_mod = stat_modifiers.get('crit damage', lambda x, y: x)
+
+        if cc_mod(base_cc) <= 100:
+            cc_mod = stat_modifiers.get('crit chance', None)
+            if cc_mod:
+                for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+                    crit_chance = cc_mod(base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance) // 1
+                    if crit_chance == 100:
+
+                        strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
+                        crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+
+                        d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
+
+                        if d > best:
+                            best = d
+                            best_route = [c, u, r, e, l]
+                            best_str = strength
+                            best_cc = crit_chance
+                            best_cd = crit_damage
+            else:
+                for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+                    if base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance == 100:
+
+                        strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
+                        crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+
+                        d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
+
+                        if d > best:
+                            best = d
+                            best_route = [c, u, r, e, l]
+                            best_str = strength
+                            best_cc = 100
+                            best_cd = crit_damage
+        else:
+            for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+
+                strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
+                crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+
+                d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
+
                 if d > best:
                     best = d
                     best_route = [c, u, r, e, l]
-                    best_stats = stats
+                    best_str = strength
+                    best_cc = cc_mod(base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance)
+                    best_cd = crit_damage
 
+                    
         await self.user.send('Calculations complete!')
 
-        async def display_result(title, routes, stats, damage):
+        async def display_result(title, routes, strength, crit_chance, crit_damage, damage):
             embed = discord.Embed(
                 title=title,
                 color=discord.Color.orange(),
@@ -492,40 +556,36 @@ class Session(skypy.Player):
                 for route in routes:
                     if str(route):
                         embed.add_field(name=route.rarity_str.title(), value=route, inline=False)
-            for name, stat in stats.items():
-                embed.add_field(name=name.title(), value=stat)
+            embed.add_field(name='Strength', value=math.floor(strength))
+            embed.add_field(name='Crit Chance', value=math.floor(crit_chance))
+            embed.add_field(name='Crit Damage', value=math.floor(crit_damage))
             embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage')
             await self.user.send(embed=embed)
 
         embeds = []
 
-        await display_result('Best Route', best_route, best_stats, best)
+        await display_result('Best Route', best_route, best_str, best_cc, best_cd, best)
 
         # Calculates the spread using the current meta
         c, u, r, e, l = [v for k, v in counts.items()]
         u_needed = min(u, (100 - base_cc) // 2)
         c_needed = min(c, (100 - base_cc) - u_needed * 2)
         
-        meta_route = (
+        meta_route = [
             Route([0, c - c_needed, 0, c_needed], 0),
             Route([0, u - u_needed, 0, u_needed], 1),
             Route([0, r, 0, 0], 2),
             Route([0, e, 0, 0], 3),
             Route([0, l, 0, 0], 4)
-        )
+        ]
         
-        meta_stats = {
-            'strength': base_str + sum(route.strength for route in meta_route),
-            'crit chance': base_cc + sum(route.crit_chance for route in meta_route),
-            'crit damage': base_cd + sum(route.crit_damage for route in meta_route)
-        }
-        
-        for modifer in self.stat_modifiers():
-            modifer(meta_stats)
+        strength = str_mod(base_str + sum(route.strength for route in meta_route))
+        crit_chance = cc_mod(base_cc + sum(route.crit_chance for route in meta_route))
+        crit_damage = cd_mod(base_cd + sum(route.crit_damage for route in meta_route), strength)
             
-        meta_damage = skypy.damage(weapon_damage, meta_stats['strength'], meta_stats['crit damage'], self.enchantment_modifier)
+        meta_damage = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
-        await display_result('Current Meta', meta_route, meta_stats, meta_damage)
+        await display_result('Current Meta', meta_route, strength, crit_chance, crit_damage, meta_damage)
         
         '''
         for modifier in self.stat_modifiers():
@@ -536,14 +596,25 @@ class Session(skypy.Player):
         )
         '''
 
+'''
+sessions = {
+    'Optimize Talismans': Optimize,
+    'View Missing Talismans': ViewMissing
+}.items()
+'''
 
 class Bot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.sessions = {}
+        
+    async def log(self, *message):
+        print(*message)
+        await self.log_channel.send(' '.join(message))
 
     async def on_ready(self):
-        print(f'Logged on as {self.user}!')
+        self.log_channel = self.get_channel(654753097897213953)
+        await self.log(f'Logged on as {self.user}!')
 
     async def on_message(self, message):
         user = message.author
@@ -565,14 +636,15 @@ class Bot(discord.Client):
             ))#.set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
 
         def updates():
+            return False
             return os.getenv('ENV') != 'server' and user != self.get_user(notnotmelon)
 
-        def start_session():
-            print(f'Starting session with {user}')
+        async def start_session():
+            await self.log(f'Starting session with {user}')
             self.sessions[user] = Session(self, user)
 
-        def end_session():
-            print(f'Session ended with {user}')
+        async def end_session():
+            await self.log(f'Session ended with {user}')
             self.sessions.pop(user)
 
         async def reply():
@@ -581,30 +653,31 @@ class Bot(discord.Client):
                 if await session.advance(message) is None:
                     await user.send('Session ended!')
                     await plug_patreon()
-                    end_session()
+                    await end_session()
             except:
-                await self.get_user(notnotmelon).send(f'{user}\n{traceback.format_exc()}')
+                error = f'ERROR with user: {user}\n{traceback.format_exc()}'
+                await self.get_user(notnotmelon).send(error)
                 await user.send('ERROR: Session closed. Logs have been sent to the developer')
-                print(user)
-                traceback.print_exc()
-                end_session()
+                await self.log(error)
+                await end_session()
 
         if message.channel == user.dm_channel:
             if updates():
-                await message.channel.send('The bot is currently down for updates, please check back later')
+                await message.channel.send('I am currently down for updates, please check back later :(')
                 return
             if user not in self.sessions.keys():
-                start_session()
+                await start_session()
                 await reply()
-            elif message.content.lower() in ['exit', 'quit', 'stop', 'end']:
-                end_session()
+            elif message.content == 'exit':
+                await end_session()
             else:
                 await reply()
         elif self.user in message.mentions:
+            await message.delete()
             if updates():
                 await message.channel.send('The bot is currently down for updates, please check back later')
                 return
-            start_session()
+            await start_session()
             await reply()
 
 

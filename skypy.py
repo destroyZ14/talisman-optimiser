@@ -131,7 +131,10 @@ class Item:
         return self['tag']['display']['Lore']
 
     def enchantments(self):
-        return self['tag']['ExtraAttributes']['enchantments']
+        try:
+            return self['tag']['ExtraAttributes']['enchantments']
+        except KeyError:
+            return {}
 
     # Why do we have to sift the lorestring for this?
     # Can't it just be in the nbt data?
@@ -156,6 +159,26 @@ class Item:
             match = reg.match(line)
             if match:
                 results[match[1].lower()] = int(match[2])
+                
+        name = self.internal_name()
+        
+        def add(stat, amount):
+            results[stat] = results.get(stat, 0) + amount
+        
+        if name == 'RECLUSE_FANG':
+            add('strength', 370)
+        elif name == 'SHREDDER':
+            add('damage', 115)
+            add('strength', 15)
+        elif name == 'NIGHT_CRYSTAL' or name == 'DAY_CRYSTAL':
+            add('strength', 2.5)
+            add('defense', 2.5)
+        elif name == 'CAKE_BAG':
+            #add('health', len(decode_inventory_data(self[][][])))
+            pass
+        elif name == 'GRAVITY_TALISMAN':
+            add('speed', 10)
+                
         if use_reforge is False:
             reforge = self.reforge()
             if reforge:
@@ -265,42 +288,44 @@ class Player:
 
             self.inventory = decode_inventory_data(v['inv_contents']['data'])
             self.echest = decode_inventory_data(v['ender_chest_contents']['data'])
-            self.candy_bag = decode_inventory_data(v['candy_inventory_contents']['data'])
             self.armor = decode_inventory_data(v['inv_armor']['data'])
             self.weapons = [item for item in self.inventory + self.echest if item.classifier() in ('sword', 'bow', 'fishing rod')]
 
-            try:
-                self.talisman_bag = decode_inventory_data(v['talisman_bag']['data'])
-            except KeyError:
-                self.talisman_bag = []
-            try:
-                self.potion_bag = decode_inventory_data(v['potion_bag']['data'])
-            except KeyError:
-                self.potion_bag = []
-            try:
-                self.fish_bag = decode_inventory_data(v['fishing_bag']['data'])
-            except KeyError:
-                self.fish_bag = []
-            try:
-                self.quiver = decode_inventory_data(v['quiver']['data'])
-            except KeyError:
-                self.quiver = []
+            def optional_inv(*path):
+                try:
+                    result = v
+                    for key in path:
+                        result = result[key]
+                    return decode_inventory_data(result)
+                except KeyError:
+                    return []
+
+            self.candy_bag = optional_inv('candy_inventory_contents', 'data')
+            self.talisman_bag = optional_inv('talisman_bag', 'data')
+            self.potion_bag = optional_inv('potion_bag', 'data')
+            self.fish_bag = optional_inv('fishing_bag', 'data')
+            self.quiver = optional_inv('quiver', 'data')
 
             self.active_talismen = []
+            active_talismen_names = []
             talisman_names = [x.internal_name() for x in self.inventory + self.talisman_bag]
             for tali in self.inventory + self.talisman_bag:
                 if tali.classifier() == 'accessory':
                     add = True
-                    for familiy in tiered_talismen:
-                        if add is False:
-                            break
-                        if tali.internal_name() in familiy[:-1]:
-                            for older_brother in familiy[familiy.index(tali.internal_name()) + 1:]:
-                                if older_brother in talisman_names:
-                                    add = False
-                                    break
+                    if tali.internal_name() in active_talismen_names:
+                        add = False
+                    else:
+                        for familiy in tiered_talismen:
+                            if add is False:
+                                break
+                            if tali.internal_name() in familiy[:-1]:
+                                for older_brother in familiy[familiy.index(tali.internal_name()) + 1:]:
+                                    if older_brother in talisman_names:
+                                        add = False
+                                        break
                     if add:
                         self.active_talismen.append(tali)
+                        active_talismen_names.append(tali.internal_name())
 
             self.join_date = datetime.fromtimestamp(v['first_join'] / 1000.0)
             self.fairy_souls_collected = v['fairy_souls_collected']
@@ -314,7 +339,10 @@ class Player:
                                    for name, amount in v['stats'].items() if re.match('deaths_', name)}
 
             def parse_skill(skill):
-                return int(v['experience_skill_' + skill])
+                try:
+                    return int(v['experience_skill_' + skill])
+                except KeyError:
+                    return 0
 
             self.skill_experience = {
                 name: parse_skill(name)
@@ -347,11 +375,6 @@ class Player:
                 'spider': parse_slayer_api('spider'),
                 'wolf': parse_slayer_api('wolf')
             }
-
-            if False:
-                for k, v in vars(self).items():
-                    if k not in ('__api_data__', 'echest', 'inventory', 'talisman_bag'):
-                        print('--------', k, v)
         except KeyError as k:
             print(k)
             raise APIDisabledError
@@ -387,11 +410,6 @@ class Player:
                     stats[reward] = stats.get(reward, 0) + amount
         return stats
 
-    def cake_stats(self):
-        bag = next((tali for tali in self.active_talismen if tali.internal_name() == 'NEW_YEAR_CAKE_BAG'), None)
-        if bag:
-            return {'health': 0}
-
     def skill_stats(self):
         return {
             'crit chance': self.skills['combat'],
@@ -404,9 +422,6 @@ class Player:
         for i in self.active_talismen:
             for stat, amount in i.stats(include_reforges).items():
                 stats[stat] = stats.get(stat, 0) + amount
-        if 'NIGHT_CRYSTAL' in names and 'DAY_CRYSTAL' in names:
-            stats['strength'] = stats.get('strength', 0) + 5
-            stats['defense'] = stats.get('defense', 0) + 5
         return stats
 
     def armor_stats(self, include_reforges=True):
@@ -420,7 +435,15 @@ class Player:
         return stats
 
     def stat_modifiers(self):
-        modifers = []
+        modifers = {}
+        def add_modifier(name, mod):
+            if name in modifers:
+                if name == 'crit damage':
+                    modifers[name] = lambda stat, strength: mod(modifers[name](stats[name], strength))
+                else:
+                    modifers[name] = lambda stat: mod(modifers[name](stats[name]))
+            else:
+                modifers[name] = mod
         helmet = next((piece for piece in self.armor if piece.classifier() == 'helmet'), None)
         tarantula_helmet = helmet and helmet.internal_name() == 'TARANTULA_HELMET'
         superior = 0
@@ -433,15 +456,13 @@ class Player:
             else:
                 break
         if superior == 4:
-            modifers.append(lambda stats: {stat: amount * 1.05 for stat, amount in stats.items()})
+            for name in ['damage', 'strength', 'crit chance', 'attack speed', 'health', 'defense', 'speed', 'intelligence']:
+                add_modifier(name, lambda stat: stat * 1.05)
+            add_modifier('crit damage', lambda stat, strength: stat * 1.05)
         elif mastiff == 4:
-            def _(stats):
-                stats['crit damage'] /= 2
-            modifers.append(_)
+            add_modifier('crit damage', lambda stat, strength: stat / 2)
         elif tarantula_helmet:
-            def _(stats):
-                stats['crit damage'] += stats['strength'] // 10
-            modifers.append(_)
+            add_modifier('crit damage', lambda stat, strength: stat + strength / 10)
         return modifers
 
     # Method is unfinished, only works for damage stats. feel free to send me a corrected version!
@@ -465,7 +486,6 @@ class Player:
         return stats
 
     def talisman_counts(self):
-
         counts = {'common': 0, 'uncommon': 0, 'rare': 0, 'epic': 0, 'legendary': 0}
         for tali in self.active_talismen:
             counts[tali.rarity()] += 1

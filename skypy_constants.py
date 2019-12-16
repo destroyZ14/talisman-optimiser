@@ -15,6 +15,10 @@ skill_rewards = {
     }
 }
 
+talismen = [
+    'CANDY_ARTIFACT'
+]
+
 slayer_rewards = {
     'zombie': (('health', 2), ('health', 2), ('health', 3), ('health', 3), ('health', 4), ('health', 4),
                ('health', 5), ('health', 5), ('health', 6)),
