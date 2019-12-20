@@ -494,7 +494,8 @@ class Session(skypy.Player):
 
         def apply_stats(additional):
             for key, value in additional.items():
-                stats[key] += value
+                if key != 'enchantment modifier':
+                    stats[key] += value
 
         stats = self.base_stats()
         apply_stats(self.fairy_soul_stats())
