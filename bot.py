@@ -139,11 +139,12 @@ relavant_reforges = {
 }
 reforges_list = list(relavant_reforges.values())
 
+
 class Route:
     def __init__(self, talismans, rarity):
         self.strength, self.crit_chance, self.crit_damage = [
             sum(reforges_list[y][rarity][x] * talismans[y]
-            for y in range(len(reforges_list)) if reforges_list[y][rarity])
+                for y in range(len(reforges_list)) if reforges_list[y][rarity])
             for x in range(3)
         ]
         self.counts = talismans
@@ -165,42 +166,46 @@ def rarity_grammar(rarity, count=0):
 
 
 class Session(skypy.Player):
-    def __init__(self, bot, user):
+    def __init__(self, bot, user, language):
         self.bot = bot
         self.user = user
+        self.language = language
         self.f = self.greet
+
+    def localize(self, text_name, *args):
+        return (self.language.get(text_name, None) or english[text_name]) % args
 
     async def advance(self, message):
         self.f = await self.f(message)
         return self.f
 
     async def greet(self, message):
-        embed = discord.Embed(title='Before you start:', color=discord.Color.green())
+        embed = discord.Embed(title=self.localize('primer'), color=discord.Color.green())
         for i, rule in enumerate([
-            'Put the armor on that you will optimize with',
-            'Put all your talismen in your inventory or talisman bag',
-            'Enable your skyblock API settings [skyblock menu > settings > api settings]',
-            'Log out of Hypixel so that the API syncs'
+            self.localize('rule1'),
+            self.localize('rule2'),
+            self.localize('rule3'),
+            self.localize('rule4')
         ]):
             embed.add_field(name=f'\t{i + 1} >', value=rule, inline=False)
-        await self.user.send(f'Hi {self.user.mention}!\nWelcome to notnotmelon\'s talisman optimizer!', embed=embed)
+        await self.user.send(self.localize('welcome', self.user.mention), embed=embed)
         return await self.ask_uname(message)
 
     async def ask_uname(self, message):
-        await self.user.send('What is your minecraft username?')
+        await self.user.send(self.localize('username?'))
         return self.collect_uname
 
     async def collect_uname(self, message):
         try:
             super().__init__(os.getenv('API_KEY'), message.content)
             await client.log(f'{self.user} linked to {message.content}')
-            await self.user.send('Username accepted')
+            await self.user.send(self.localize('unameaccept'))
             return await self.ask_profile(message)
         except skypy.NeverPlayedSkyblockError:
-            await self.user.send('You have never played skyblock! Try again')
+            await self.user.send(self.localize('neverplayedsb'))
             return await self.ask_uname(message)
         except SkyblockError:
-            await self.user.send('Invalid username! Try again')
+            await self.user.send(self.localize('invaliduname'))
             return await self.ask_uname(message)
 
     async def ask_profile(self, message):
@@ -211,9 +216,8 @@ class Session(skypy.Player):
                 return await self.ask_uname(message)
         else:
             embed = discord.Embed(
-                title='Which profile do you want to use?',
-
-                description='(Sorted by date created)',
+                title=self.localize('profile?'),
+                description=self.localize('sortbydate'),
                 color=discord.Color.gold()
             )
             embed.add_field(name='\u200b', value='\n\n'.join(self.profiles.keys()))
@@ -224,16 +228,14 @@ class Session(skypy.Player):
         try:
             self.set_profile(profile)
             return True
-        except SkyblockError:
+        except SkyblockError as e:
             await self.user.send(
                 embed=discord.Embed(
-                    title='Your API settings are (probably) disabled!',
-                    description='Re-enable them with [skyblock menu > settings > api settings]'
-                ).set_footer(
-                    text='Sometimes this message appears even if your API settings are enabled. If so, exit Hypixel '
-                         'and try again'
-                )
+                    title=self.localize('apidisabled'),
+                    description=self.localize('reenable')
+                ).set_footer(text=self.localize('thisappearsif'))
             )
+            await client.log(f'API settings disabled for {self.user} reason: {e}')
             return False
 
     async def collect_profile(self, message):
@@ -243,7 +245,7 @@ class Session(skypy.Player):
             else:
                 return await self.ask_profile(message)
         except KeyError:
-            await self.user.send('Choose one of the listed profiles')
+            await self.user.send(self.localize('chooselisted'))
             return await self.ask_profile(message)
 
     async def display_talisman_warnings(self, message):
@@ -256,7 +258,7 @@ class Session(skypy.Player):
         if bad:
             await self.user.send(
                 embed=discord.Embed(
-                    title='You have unnecessary talismen!',
+                    title=self.localize('unnecessary'),
                     color=discord.Color.red()
                 ).add_field(
                     name='\u200b',
@@ -267,24 +269,19 @@ class Session(skypy.Player):
 
     async def ask_weapon(self, message):
         if len(self.weapons) == 0:
-            await self.user.send(
-                'You are not carrying any weapons!\n'
-                'Place one in your inventory and try again'
-            )
+            await self.user.send(self.localize('noweapon'))
         if len(self.weapons) == 1:
             self.weapon = self.weapons[0]
             return await self.test_profile(message)
         else:
-            embed=discord.Embed(
-                title='Which weapon do you want to use?',
+            embed = discord.Embed(
+                title=self.localize('weapon?'),
                 color=discord.Color.gold()
-            ).set_footer(
-                text='Enter the weapon name or the weapon number'
-            )
+            ).set_footer(text=self.localize('usenameornumber'))
             for i, weapon in enumerate(self.weapons):
                 embed.add_field(
-                    name = f'{i + 1} >',
-                    value = weapon.name(),
+                    name=f'{i + 1} >',
+                    value=weapon.name(),
                     inline=False
                 )
             await self.user.send(embed=embed)
@@ -300,15 +297,15 @@ class Session(skypy.Player):
             try:
                 self.weapon = self.weapons[int(content) - 1]
             except IndexError:
-                return self.ask_weapon(message)
+                return await self.ask_weapon(message)
             return await self.test_profile(message)
         else:
             return await self.ask_weapon(message)
 
     async def test_profile(self, message):
         embed = discord.Embed(
-            title='Profile accepted!',
-            description='Is this the correct equipment? [YES/NO]',
+            title=self.localize('profileaccepted'),
+            description=self.localize('correctequip?'),
             color=discord.Color.magenta()
         ).add_field(
             name='Weapon: ',
@@ -328,14 +325,14 @@ class Session(skypy.Player):
 
     async def collect_profile_test(self, message):
         response = message.content.lower()
-        if response == 'yes':
+        if response == self.localize('yes'):
             return await self.start_potions(message)
-        elif response == 'no':
+        elif response == self.localize('no'):
             return await self.ask_profile(message)
         else:
-            await self.user.send('Please answer with YES or NO')
+            await self.user.send(self.localize('ansy/n'))
             return await self.test_profile(message)
-        
+
     async def start_potions(self, message):
         self.potion_id = 0
         self.potion_stats = {}
@@ -346,64 +343,63 @@ class Session(skypy.Player):
         self.crit = potion_name == 'critical'
         if potion_name == 'archery' and self.weapon.classifier() != 'bow':
             return await self.advance_potion(message)
-        await self.user.send(f'Do you use {potion_name} pots with this build? [YES/NO]')
+        await self.user.send(self.localize('potion?', potion_name))
         return self.collect_potion
 
     async def collect_potion(self, message):
         response = message.content.lower()
-        if response == 'yes':
+        if response == self.localize('yes'):
             return await self.ask_potion_level(message)
-        elif response == 'no':
+        elif response == self.localize('no'):
             if self.crit:
                 self.potion_id += 1
                 return await self.ask_crit_goal(message)
             else:
                 return await self.advance_potion(message)
         else:
-            await self.user.send('Please answer with YES or NO')
+            await self.user.send(self.localize('ansy/n'))
             return await self.ask_potion(message)
 
     async def advance_potion(self, message):
         self.potion_id += 1
         if self.potion_id >= len(damaging_potions):
-            await client.log(f'Potion stats for {self.user}: {self.potion_stats}')
             return await self.check_orbs(message)
         else:
             return await self.ask_potion(message)
 
     async def ask_potion_level(self, message):
-        await self.user.send(f'Which level of {damaging_potions[self.potion_id]["name"]} potions do you use?')
+        await self.user.send(self.localize('potionlvl?', damaging_potions[self.potion_id]["name"]))
         return self.collect_potion_level
 
     async def collect_potion_level(self, message):
         try:
             level = int(message.content)
-            
+
             if level < 0:
                 raise ValueError
-            
+
             self.potion_stats.update({
                 stat: amounts[level] + self.potion_stats.get(stat, 0)
                 for stat, amounts in damaging_potions[self.potion_id]['stats'].items()
             })
             return await self.advance_potion(message)
         except (KeyError, ValueError, IndexError):
-            await self.user.send('Invalid response! Enter a number')
+            await self.user.send(self.localize('enternumb'))
             return await self.ask_potion_level(message)
 
     async def ask_crit_goal(self, message):
-        await self.user.send(f'You indicated that you want don\'t want to use crit pots\nDo you want to have 80 crit chance anyway? [YES/NO]')
+        await self.user.send(self.localize('critgoal?'))
         return self.collect_crit_goal
-        
+
     async def collect_crit_goal(self, message):
         response = message.content.lower()
-        if response == 'yes':
+        if response == self.localize('yes'):
             self.potion_stats['crit chance'] = self.potion_stats.get('crit chance', 0) + 20
             return await self.ask_potion(message)
-        elif response == 'no':
-            return await self.advance_potion(message)
+        elif response == self.localize('no'):
+            return await self.ask_potion(message)
         else:
-            await self.user.send('Please answer with YES or NO')
+            await self.user.send(self.localize('ansy/n'))
             return await self.ask_crit_goal(message)
 
     async def check_orbs(self, message):
@@ -419,26 +415,27 @@ class Session(skypy.Player):
             elif name == 'MANA_FLUX_POWER_ORB':
                 self.mana = True
         return await self.ask_orbs(message)
-        
+
     async def ask_orbs(self, message):
         if self.over:
             self.over = False
-            await self.user.send('I detected an overflux orb. Should I include that in the calcuations? [YES/NO]')
+            await self.user.send(self.localize('overflux'))
             self.orb_queue = {'strength': 25}
         elif self.mana:
             self.mana = False
-            await self.user.send('I detected a mana flux orb. Should I include that in the calcuations? [YES/NO]')
+            await self.user.send(self.localize('manaflux'))
             self.orb_queue = {'strength': 10}
         elif self.tuba:
             self.tuba = False
-            await self.user.send('I detected a weird tuba. Should I include that in the calcuations? [YES/NO]')
+            await self.user.send(self.localize('tuba'))
             self.orb_queue = {'strength': 30}
         else:
+            await client.log(f'Potion stats for {self.user}: {self.potion_stats}')
             return await self.ask_enchantment_modifier(message)
         return self.collect_orbs
-        
+
     async def collect_orbs(self, message):
-        if message.content.lower() == 'yes':
+        if message.content.lower() == self.localize('yes'):
             for stat, amount in self.orb_queue.items():
                 self.potion_stats[stat] = self.potion_stats.get(stat, 0) + amount
         return await self.ask_orbs(message)
@@ -448,7 +445,7 @@ class Session(skypy.Player):
             self.enchantment_modifier = 0
             return self.calculate_optimal_talismans
         await self.user.send(embed=discord.Embed(
-            title='Which mob will you target with this setup?',
+            title=self.localize('target?'),
             color=discord.Color.dark_orange()
         ).add_field(
             name='\u200b',
@@ -461,7 +458,7 @@ class Session(skypy.Player):
         self.enchantment_modifier = self.skills['combat'] * 4 + self.potion_stats.get('enchantment modifier', 0)
 
         if message.content.title() not in activities:
-            await self.user.send('Invalid response! Pick one of the activities')
+            await self.user.send(self.localize('pickactivities'))
             return await self.ask_enchantment_modifier(message)
 
         for enchantment in activities[message.content.title()]:
@@ -514,16 +511,16 @@ class Session(skypy.Player):
         base_cd = stats['crit damage']
 
         counts = self.talisman_counts()
-        
+
         await client.log('Main algorithm started for', self.uname)
-        await self.user.send('Please wait. Your results will be sent shortly...')
-        
+        await self.user.send(self.localize('algstarted'))
+
         best = 0
         best_route = []
         best_str = 0
         best_cc = 0
         best_cd = 0
-        
+
         stat_modifiers = self.stat_modifiers()
         str_mod = stat_modifiers.get('strength', lambda x: x)
         cc_mod = stat_modifiers.get('crit chance', lambda x: x)
@@ -532,12 +529,16 @@ class Session(skypy.Player):
         if cc_mod(base_cc) <= 100:
             cc_mod = stat_modifiers.get('crit chance', None)
             if cc_mod:
-                for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
-                    crit_chance = cc_mod(base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance) // 1
+                for c, u, r, e, l in product(
+                        *[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+                    crit_chance = cc_mod(
+                        base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance) // 1
                     if crit_chance == 100:
 
                         strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
-                        crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+                        crit_damage = cd_mod(
+                            base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage,
+                            strength)
 
                         d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
@@ -548,11 +549,14 @@ class Session(skypy.Player):
                             best_cc = crit_chance
                             best_cd = crit_damage
             else:
-                for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+                for c, u, r, e, l in product(
+                        *[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
                     if base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance == 100:
 
                         strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
-                        crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+                        crit_damage = cd_mod(
+                            base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage,
+                            strength)
 
                         d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
@@ -563,10 +567,12 @@ class Session(skypy.Player):
                             best_cc = 100
                             best_cd = crit_damage
         else:
-            for c, u, r, e, l in product(*[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
+            for c, u, r, e, l in product(
+                    *[routes(counts[key], 4, rarity_num) for rarity_num, key in enumerate(counts.keys())]):
 
                 strength = str_mod(base_str + c.strength + u.strength + r.strength + e.strength + l.strength)
-                crit_damage = cd_mod(base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
+                crit_damage = cd_mod(
+                    base_cd + c.crit_damage + u.crit_damage + r.crit_damage + e.crit_damage + l.crit_damage, strength)
 
                 d = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
@@ -574,10 +580,11 @@ class Session(skypy.Player):
                     best = d
                     best_route = [c, u, r, e, l]
                     best_str = strength
-                    best_cc = cc_mod(base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance)
+                    best_cc = cc_mod(
+                        base_cc + c.crit_chance + u.crit_chance + r.crit_chance + e.crit_chance + l.crit_chance)
                     best_cd = crit_damage
-                    
-        await self.user.send('Calculations complete!')
+
+        await self.user.send(self.localize('finished'))
 
         cc_mod = cc_mod or (lambda x: x)
 
@@ -586,9 +593,7 @@ class Session(skypy.Player):
                 title=title,
                 color=discord.Color.orange(),
             ).set_footer(
-                text='Damage multipliers from weapons such as\n'
-                'scorpion foil or reaper falichion are not included.\n'
-                'Talisman results should still be correct.'
+                text=self.localize('disclaimer')
             )
             if routes:
                 for route in routes:
@@ -597,19 +602,19 @@ class Session(skypy.Player):
             embed.add_field(name='Strength', value=math.floor(strength))
             embed.add_field(name='Crit Chance', value=math.floor(crit_chance) - self.potion_stats.get('crit chance', 0))
             embed.add_field(name='Crit Damage', value=math.floor(crit_damage))
-            embed.add_field(name='\u200b', value=f'This setup should deal {round(damage)} damage', inline=False)
-            embed.add_field(name=f'> {round(non_crit)} without crit', value='\u200b ', inline=False)
+            embed.add_field(name='\u200b', value=self.localize('shoulddeal', round(damage)), inline=False)
+            embed.add_field(name=self.localize('withoutcrit', round(non_crit)), value='\u200b ', inline=False)
             await self.user.send(embed=embed)
 
         await display_result('Best Route', best_route, best_str, best_cc, best_cd, best,
-            skypy.damage(weapon_damage, best_str, 0, self.enchantment_modifier)
-        )
+                             skypy.damage(weapon_damage, best_str, 0, self.enchantment_modifier)
+                             )
 
         # Calculates the spread using the current meta
         c, u, r, e, l = [v for k, v in counts.items()]
         u_needed = min(u, (100 - base_cc) // 2)
         c_needed = min(c, (100 - base_cc) - u_needed * 2)
-        
+
         meta_route = [
             Route([0, c - c_needed, 0, c_needed], 0),
             Route([0, u - u_needed, 0, u_needed], 1),
@@ -617,17 +622,17 @@ class Session(skypy.Player):
             Route([0, e, 0, 0], 3),
             Route([0, l, 0, 0], 4)
         ]
-        
+
         strength = str_mod(base_str + sum(route.strength for route in meta_route))
         crit_chance = cc_mod(base_cc + sum(route.crit_chance for route in meta_route))
         crit_damage = cd_mod(base_cd + sum(route.crit_damage for route in meta_route), strength)
-            
+
         meta_damage = skypy.damage(weapon_damage, strength, crit_damage, self.enchantment_modifier)
 
         await display_result('Current Meta', meta_route, strength, crit_chance, crit_damage, meta_damage,
-            skypy.damage(weapon_damage, strength, 0, self.enchantment_modifier)
-        )
-        
+                             skypy.damage(weapon_damage, strength, 0, self.enchantment_modifier)
+                             )
+
         '''
         for modifier in self.stat_modifiers():
             modifier(stats)
@@ -637,6 +642,7 @@ class Session(skypy.Player):
         )
         '''
 
+
 '''
 sessions = {
     'Optimize Talismans': Optimize,
@@ -644,11 +650,20 @@ sessions = {
 }.items()
 '''
 
+from lang import *
+
+server_languages = {
+    652148034448261150: english,  # main server
+    651266868685832193: spanish,  # sb hispanic
+    604420816817356822: english  # skyborn
+}
+
+
 class Bot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.sessions = {}
-        
+
     async def log(self, *message):
         print(*message)
         await self.log_channel.send(' '.join(message))
@@ -659,29 +674,25 @@ class Bot(discord.Client):
 
     async def on_message(self, message):
         user = message.author
+
         if user.bot:
             return
-
-        async def plug_patreon():
-            await user.send(embed=discord.Embed(
-                title='Like what you see?',
-                color=discord.Color.gold()
-            ).add_field(
-                name='\u200b',
-                value='\n'.join([
-                    'Consider a donation via patreon',
-                    'Donations help support server costs, and you can suggest new features for the bot',
-                    '',
-                    'https://www.patreon.com/user?u=28018797'
-                ])
-            ))#.set_image(url='https://cdn.dribbble.com/users/407429/screenshots/2817437/patreon_1-01.png'))
 
         def updates():
             return os.getenv('ENV') != 'server' and user != self.get_user(notnotmelon)
 
-        async def start_session():
-            await self.log(f'Starting session with {user}')
-            self.sessions[user] = Session(self, user)
+        async def start_session(guild):
+            language = english
+            if guild:
+                id = message.guild.id
+                if id not in server_languages:
+                    await message.channel.send(
+                        'This server is not authorized! If you are the server owner, send my boss a DM at notnotmelon#7218')
+                    return
+                language = server_languages[id]
+            await self.log(f'Starting session with {user} in server {message.guild}')
+            self.sessions[user] = Session(self, user, language)
+            await reply()
 
         async def end_session():
             await self.log(f'Session ended with {user}')
@@ -692,33 +703,31 @@ class Bot(discord.Client):
                 session = self.sessions[user]
                 if await session.advance(message) is None:
                     await user.send('Session ended!')
-                    await plug_patreon()
+
                     await end_session()
             except:
                 error = f'ERROR with user: {user}\n{traceback.format_exc()}'
                 await self.get_user(notnotmelon).send(error)
-                await user.send('ERROR: Session closed. Logs have been sent to the developer')
+                await user.send('ERROR: Session closed. Logs have been sent to the developer :(')
                 await self.log(error)
                 await end_session()
 
+        m = message.content.lower()
         if message.channel == user.dm_channel:
             if updates():
-                await message.channel.send('I am currently down for updates, please check back later :(')
+                await message.channel.send('The bot is currently down for updates, please check back later :(')
                 return
             if user not in self.sessions.keys():
-                await start_session()
-                await reply()
-            elif message.content == 'exit':
+                await start_session(guild=False)
+            elif m == 'exit':
                 await end_session()
             else:
                 await reply()
         elif self.user in message.mentions:
-            await message.delete()
             if updates():
-                await message.channel.send('The bot is currently down for updates, please check back later')
-                return
-            await start_session()
-            await reply()
+                await message.channel.send('The bot is currently down for updates, please check back later :(')
+            else:
+                await start_session(guild=True)
 
 
 client = Bot()

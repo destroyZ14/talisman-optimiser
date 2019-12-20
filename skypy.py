@@ -18,11 +18,14 @@ from struct import unpack
 class SkyblockError(Exception):
     """A general exception from the skyblock library"""
 
+
 class NeverPlayedSkyblockError(SkyblockError):
     """This user has never played skyblock before!"""
 
+
 class APIDisabledError(SkyblockError):
     """This profile has disabled their API settings!"""
+
 
 def decode_inventory_data(raw):
     """Takes a raw string representing inventory data.
@@ -113,7 +116,7 @@ class Item:
     def rarity_level(self):
         return ['common', 'uncommon', 'rare', 'epic', 'legendary', 'special'].index(self.rarity())
 
-    def classifier(self): # Should support minons and bugged items without rarities, but dosen't L
+    def classifier(self):  # Should support minons and bugged items without rarities, but dosen't L
         if self.internal_name() == 'SKYBLOCK_MENU':
             return None
         try:
@@ -159,12 +162,12 @@ class Item:
             match = reg.match(line)
             if match:
                 results[match[1].lower()] = int(match[2])
-                
+
         name = self.internal_name()
-        
+
         def add(stat, amount):
             results[stat] = results.get(stat, 0) + amount
-        
+
         if name == 'RECLUSE_FANG':
             add('strength', 370)
         elif name == 'SHREDDER':
@@ -174,11 +177,11 @@ class Item:
             add('strength', 2.5)
             add('defense', 2.5)
         elif name == 'CAKE_BAG':
-            #add('health', len(decode_inventory_data(self[][][])))
+            # add('health', len(decode_inventory_data(self[][][])))
             pass
         elif name == 'GRAVITY_TALISMAN':
             add('speed', 10)
-                
+
         if use_reforge is False:
             reforge = self.reforge()
             if reforge:
@@ -206,6 +209,7 @@ def get_uname(uuid):
         return json.loads(req)[-1]['name']
     except (KeyError, json.JSONDecodeError):
         raise SkyblockError('Invalid uuid!') from None
+
 
 class Player:
     """A class representing a Skyblock player.
@@ -289,7 +293,8 @@ class Player:
             self.inventory = decode_inventory_data(v['inv_contents']['data'])
             self.echest = decode_inventory_data(v['ender_chest_contents']['data'])
             self.armor = decode_inventory_data(v['inv_armor']['data'])
-            self.weapons = [item for item in self.inventory + self.echest if item.classifier() in ('sword', 'bow', 'fishing rod')]
+            self.weapons = [item for item in self.inventory + self.echest if
+                            item.classifier() in ('sword', 'bow', 'fishing rod')]
 
             def optional_inv(*path):
                 try:
@@ -368,7 +373,10 @@ class Player:
             }
 
             def parse_slayer_api(name):
-                return int(list(v['slayer_bosses'][name]['claimed_levels'].keys())[-1].replace('level_', ''))
+                try:
+                    return int(list(v['slayer_bosses'][name]['claimed_levels'].keys())[-1].replace('level_', ''))
+                except IndexError:
+                    return 0
 
             self.slayer_levels = {
                 'zombie': parse_slayer_api('zombie'),
@@ -376,8 +384,7 @@ class Player:
                 'wolf': parse_slayer_api('wolf')
             }
         except KeyError as k:
-            print(k)
-            raise APIDisabledError
+            raise APIDisabledError(k)
 
     def is_player_online(self):
         player_data = self.__call_api__('/player?name=' + self.uname)['player']
@@ -436,14 +443,16 @@ class Player:
 
     def stat_modifiers(self):
         modifers = {}
+
         def add_modifier(name, mod):
             if name in modifers:
                 if name == 'crit damage':
-                    modifers[name] = lambda stat, strength: mod(modifers[name](stats[name], strength))
+                    modifers[name] = lambda stat, strength: mod(modifers[name](stat, strength))
                 else:
-                    modifers[name] = lambda stat: mod(modifers[name](stats[name]))
+                    modifers[name] = lambda stat: mod(modifers[name](stat))
             else:
                 modifers[name] = mod
+
         helmet = next((piece for piece in self.armor if piece.classifier() == 'helmet'), None)
         tarantula_helmet = helmet and helmet.internal_name() == 'TARANTULA_HELMET'
         superior = 0
@@ -456,7 +465,8 @@ class Player:
             else:
                 break
         if superior == 4:
-            for name in ['damage', 'strength', 'crit chance', 'attack speed', 'health', 'defense', 'speed', 'intelligence']:
+            for name in ['damage', 'strength', 'crit chance', 'attack speed', 'health', 'defense', 'speed',
+                         'intelligence']:
                 add_modifier(name, lambda stat: stat * 1.05)
             add_modifier('crit damage', lambda stat, strength: stat * 1.05)
         elif mastiff == 4:
