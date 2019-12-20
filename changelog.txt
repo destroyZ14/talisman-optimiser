@@ -1,0 +1,41 @@
+----
+What's new in version 5?:
+1. Hypixel API support
+2. Complete code rewrite, the program is now a Discord bot
+3. Now supports:
+  - Superior
+  - Tarantula
+  - Mastiff
+  - Power orbs / Weird Tuba
+  - Recluse fang
+  - Potions
+  - Fishing rods
+4. Spanish Translation
+----
+
+----
+What's new in version 4?:
+1. Fixed bug with red claw talismen and day/night crystals
+2. Added more information in the output
+3. Cleaned up the input even further
+4. Meta Calculator is back
+5. Spelling errors
+----
+
+----
+What's new in version 3?:
+1. Bow support :eek:
+2. Removed unpleasant from the reforge pool
+3. Clarified raw dmg prompt
+4. Superior armor performance improvements
+5. Support for legendary talismen
+6. Reminder about artifact/ring/tali reforge stacking
+----
+
+----
+What's new in version 2?:
+1. Now supports superior armor or high cc (stop asking for this it's already in lol)
+2. New streamlined input format
+3. Fixed a rounding error causing slight damage deviations from in-game damage
+4. Removed "meta" calcuator (bugged atm I'm working on it)
+----
